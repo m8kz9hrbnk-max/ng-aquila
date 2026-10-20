@@ -177,8 +177,10 @@ describe('NxIsoDateAdapter', () => {
     });
 
     it('should return today as a local ISO date', () => {
+      const dateBefore = dayjs().format('YYYY-MM-DD');
       const today = adapter.today();
-      const expectedDates = [dayjs().format('YYYY-MM-DD'), dayjs().format('YYYY-MM-DD')];
+      const dateAfter = dayjs().format('YYYY-MM-DD');
+      const expectedDates = [dateBefore, dateAfter];
 
       expect(expectedDates).toContain(today);
       expect(adapter.isDateInstance(today)).toBe(true);
