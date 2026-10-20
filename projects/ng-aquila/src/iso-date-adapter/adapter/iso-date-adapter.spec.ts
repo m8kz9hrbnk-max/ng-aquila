@@ -167,4 +167,176 @@ describe('NxIsoDateAdapter', () => {
     expect(adapter.format('2017-01-02', 'MM/DD/YYYY')).toBe('01/02/2017');
     expect(adapter.format('2017-01-02', 'DD/MM/YYYY')).toBe('02/01/2017');
   });
+
+  it('should expose ISO date values and year names', () => {
+    expect(adapter.toIso8601('2017-01-02')).toBe('2017-01-02T00:00:00Z');
+    expect(adapter.clone('2017-01-02')).toBe('2017-01-02');
+    expect(adapter.getYearName('2017-01-02')).toBe('2017');
+  });
+
+  it('should get the number of days in each month', () => {
+    expect(adapter.getNumDaysInMonth('2017-02-01')).toBe(28);
+    expect(adapter.getNumDaysInMonth('2020-02-01')).toBe(29);
+    expect(adapter.getNumDaysInMonth('2017-01-01')).toBe(31);
+  });
+
+  it('should get the day of the week', () => {
+    expect(adapter.getDayOfWeek('2017-01-01')).toBe(0);
+  });
+
+  it('should get localized date and month names', () => {
+    expect(adapter.getDateNames()).toEqual(
+      Array.from({ length: 31 }, (_, index) => (index + 1).toString()),
+    );
+    expect(adapter.getMonthNames('long')).toEqual([
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ]);
+    expect(adapter.getMonthNames('short')).toEqual([
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ]);
+  });
+
+  it('should get localized day names', async () => {
+    expect(adapter.getDayOfWeekNames('long')).toEqual([
+      'Sunday',
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+    ]);
+    expect(adapter.getDayOfWeekNames('short')).toEqual([
+      'Sun',
+      'Mon',
+      'Tue',
+      'Wed',
+      'Thu',
+      'Fri',
+      'Sat',
+    ]);
+    expect(adapter.getDayOfWeekNames('narrow')).toEqual(['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']);
+
+    await adapter.setLocale('de');
+    expect(adapter.getDayOfWeekNames('long')[1]).toBe('Montag');
+  });
+
+  it('should get the first day of the week for each locale', async () => {
+    await adapter.setLocale('en');
+    expect(adapter.getFirstDayOfWeek()).toBe(0);
+
+    await adapter.setLocale('de');
+    expect(adapter.getFirstDayOfWeek()).toBe(1);
+  });
+
+  it('should add calendar days, months, and years', () => {
+    expect(adapter.addCalendarDays('2017-01-01', 1)).toBe('2017-01-02');
+    expect(adapter.addCalendarDays('2017-01-01', -1)).toBe('2016-12-31');
+    expect(adapter.addCalendarMonths('2017-01-31', 1)).toBe('2017-02-28');
+    expect(adapter.addCalendarMonths('2017-03-31', -1)).toBe('2017-02-28');
+    expect(adapter.addCalendarMonths('2017-12-31', 1)).toBe('2018-01-31');
+    expect(adapter.addCalendarYears('2020-02-29', 1)).toBe('2021-02-28');
+    expect(adapter.addCalendarYears('2020-02-29', -1)).toBe('2019-02-28');
+  });
+
+  it('should return today in the local calendar', () => {
+    const now = new Date();
+    const pad = (value: number) => value.toString().padStart(2, '0');
+    const expected = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+    expect(adapter.today()).toBe(expected);
+  });
+
+  it('should create valid dates and reject invalid dates with exact errors', () => {
+    expect(adapter.createDate(2017, 0, 1)).toBe('2017-01-01');
+    expect(adapter.createDate(2020, 1, 29)).toBe('2020-02-29');
+    expect(() => adapter.createDate(2017, -1, 1)).toThrowError(
+      new Error('Invalid month index "-1". Month index has to be between 0 and 11.'),
+    );
+    expect(() => adapter.createDate(2017, 12, 1)).toThrowError(
+      new Error('Invalid month index "12". Month index has to be between 0 and 11.'),
+    );
+    expect(() => adapter.createDate(2017, 0, 0)).toThrowError(
+      new Error('Invalid date "0". Date has to be greater than 0.'),
+    );
+    expect(() => adapter.createDate(2017, 1, 29)).toThrowError(
+      new Error('Invalid date "29" for month with index "1".'),
+    );
+  });
+
+  it('should identify ISO date string instances', () => {
+    expect(adapter.isDateInstance('')).toBe(true);
+    expect(adapter.isDateInstance('2017-01-01')).toBe(true);
+    expect(adapter.isDateInstance('20170101')).toBe(true);
+    expect(adapter.isDateInstance('2017-0101')).toBe(false);
+    expect(adapter.isDateInstance('2017-13-01')).toBe(false);
+    expect(adapter.isDateInstance(new Date())).toBe(false);
+    expect(adapter.isDateInstance(null)).toBe(false);
+    expect(adapter.isDateInstance(123)).toBe(false);
+  });
+
+  it('should normalize localized formats and fall back when a locale is not loaded', async () => {
+    expect(adapter.normalizeFormat(['L', 'YYYY-MM-DD'])).toEqual(['MM/DD/YYYY', 'YYYY-MM-DD']);
+
+    const originalLocale = dayjs.locale();
+    try {
+      dayjs.locale('en');
+      await adapter.setLocale('fr');
+      const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      expect(adapter.normalizeFormat(['L'])).toEqual(['MM/DD/YYYY']);
+      expect(warning).toHaveBeenCalledWith(
+        expect.stringContaining('The used locale "fr" is not available'),
+      );
+    } finally {
+      dayjs.locale(originalLocale);
+    }
+  });
+
+  it('should return an empty string when parsing non-string or empty values', () => {
+    for (const value of [null, 123, '']) {
+      expect(adapter.parse(value, 'YYYY-MM-DD', true)).toBe('');
+      expect(adapter.parse(value, 'YYYY-MM-DD', false)).toBe('');
+    }
+  });
+
+  it('should delegate non-date deserialization to the base adapter', () => {
+    expect(adapter.deserialize({})).toBe('');
+    expect(adapter.deserialize(123)).toBe('');
+  });
+
+  it('should use the global locale when constructed without a locale', () => {
+    const originalLocale = dayjs.locale();
+    try {
+      dayjs.locale('en');
+      const defaultLocaleAdapter = new NxIsoDateAdapter(null);
+
+      expect(defaultLocaleAdapter.getFirstDayOfWeek()).toBe(0);
+      expect(defaultLocaleAdapter.getMonthNames('long')[0]).toBe('January');
+    } finally {
+      dayjs.locale(originalLocale);
+    }
+  });
 });
